@@ -1,0 +1,48 @@
+# ============================================================
+# E-Commerce Analytics Platform — Python Dependencies
+# ============================================================
+# Install with: pip install -r requirements.txt
+
+# --- Data Engineering & Database ---
+pandas==2.2.2              # DataFrames — the backbone of all data work
+numpy==1.26.4              # Numerical operations
+sqlalchemy==1.4.52         # ORM / database connection toolkit
+psycopg2-binary==2.9.9     # PostgreSQL adapter for Python
+psycopg[binary]==3.2.1      # PostgreSQL client for modern COPY/async use cases
+python-dotenv==1.0.1       # Load .env files for secrets (DB passwords etc.)
+
+# --- Data Generation (for synthetic dataset) ---
+faker==25.2.0              # Generate realistic fake names, addresses, etc.
+
+# --- Apache Airflow (core + PostgreSQL provider) ---
+apache-airflow==2.9.2
+apache-airflow-providers-postgres==5.11.0
+apache-airflow-providers-http==4.10.0
+apache-airflow-providers-common-sql==1.14.0
+
+# --- dbt (data build tool) ---
+dbt-core==1.8.3
+dbt-postgres==1.8.2        # dbt adapter for PostgreSQL
+
+# --- Machine Learning ---
+scikit-learn==1.5.0        # Regression models, preprocessing, metrics
+joblib==1.4.2              # Model serialization (save/load trained models)
+matplotlib==3.9.0          # Plotting predictions vs actuals
+seaborn==0.13.2            # Statistical visualization
+
+# --- Jupyter Notebook (for ML notebook) ---
+jupyter==1.0.0
+ipykernel==6.29.4
+
+# --- Streamlit Dashboard ---
+streamlit==1.35.0          # Web-based interactive dashboard
+plotly==5.22.0             # Interactive charts (used inside Streamlit)
+
+# --- Testing ---
+pytest==8.2.2
+pytest-cov==5.0.0
+
+# --- Utilities ---
+tqdm==4.66.4               # Progress bars for long-running scripts
+loguru==0.7.2              # Beautiful, structured logging
+pydantic==2.7.4            # Data validation

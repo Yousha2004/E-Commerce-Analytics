@@ -1,0 +1,156 @@
+# ============================================================
+# docker-compose.yml — Spin up the entire platform with one command
+#
+# WHAT IS DOCKER COMPOSE?
+# Docker Compose lets you define multiple services (PostgreSQL,
+# Airflow, pgAdmin) in one file and start them all with:
+#   docker-compose up -d
+#
+# SERVICES IN THIS FILE:
+#   1. postgres       — Our data warehouse database
+#   2. pgadmin        — Web UI to browse the database
+#   3. airflow-init   — One-time setup for Airflow
+#   4. airflow-web    — Airflow's web dashboard (localhost:8080)
+#   5. airflow-sched  — Airflow's background scheduler
+# ============================================================
+
+version: '3.8'
+
+# Define a shared network so all containers can talk to each other
+networks:
+  ecommerce_network:
+    driver: bridge
+
+# Named volumes persist data even if containers are restarted
+volumes:
+  postgres_data:
+  pgadmin_data:
+
+services:
+
+  # ──────────────────────────────────────────────────────────
+  # 1. PostgreSQL — Our main data warehouse
+  # ──────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: ecommerce_postgres
+    environment:
+      POSTGRES_DB: ecommerce_dw        # Database name
+      POSTGRES_USER: ecommerce_user    # Username
+      POSTGRES_PASSWORD: ecommerce_pass # Password (change in production!)
+    ports:
+      - "5432:5432"   # host_port:container_port — access from your machine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data          # Persist DB data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql  # Auto-run schema on first start
+    networks:
+      - ecommerce_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecommerce_user -d ecommerce_dw"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ──────────────────────────────────────────────────────────
+  # 2. pgAdmin — Visual database browser at localhost:5050
+  # ──────────────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: ecommerce_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@ecommerce.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - ecommerce_network
+
+  # ──────────────────────────────────────────────────────────
+  # 3. Airflow Initialization — Runs ONCE to set up Airflow DB
+  # ──────────────────────────────────────────────────────────
+  airflow-init:
+    build: .
+    container_name: ecommerce_airflow_init
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://ecommerce_user:ecommerce_pass@postgres/ecommerce_dw
+      AIRFLOW__CORE__FERNET_KEY: 'ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg='
+      AIRFLOW__WEBSERVER__SECRET_KEY: 'your-secret-key-here'
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin123
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate &&
+        airflow users create --username admin --password admin123 --firstname Admin --lastname User --role Admin --email admin@ecommerce.com || true
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./dbt:/opt/airflow/dbt
+      - ./models:/opt/airflow/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ecommerce_network
+
+  # ──────────────────────────────────────────────────────────
+  # 4. Airflow Webserver — Dashboard at localhost:8080
+  # ──────────────────────────────────────────────────────────
+  airflow-webserver:
+    build: .
+    container_name: ecommerce_airflow_web
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://ecommerce_user:ecommerce_pass@postgres/ecommerce_dw
+      AIRFLOW__CORE__FERNET_KEY: 'ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg='
+      AIRFLOW__WEBSERVER__SECRET_KEY: 'your-secret-key-here'
+    command: webserver
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./python:/opt/airflow/python     # Make Python scripts available to Airflow
+      - ./data:/opt/airflow/data         # Make data directory available
+      - ./dbt:/opt/airflow/dbt
+      - ./models:/opt/airflow/models
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    networks:
+      - ecommerce_network
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────────────────
+  # 5. Airflow Scheduler — Runs DAGs in the background
+  # ──────────────────────────────────────────────────────────
+  airflow-scheduler:
+    build: .
+    container_name: ecommerce_airflow_scheduler
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://ecommerce_user:ecommerce_pass@postgres/ecommerce_dw
+      AIRFLOW__CORE__FERNET_KEY: 'ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg='
+      AIRFLOW__WEBSERVER__SECRET_KEY: 'your-secret-key-here'
+    command: scheduler
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./python:/opt/airflow/python
+      - ./data:/opt/airflow/data
+      - ./dbt:/opt/airflow/dbt
+      - ./models:/opt/airflow/models
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    networks:
+      - ecommerce_network
+    restart: unless-stopped

@@ -1,0 +1,258 @@
+# schema.yml
+# ==========
+# PURPOSE:
+#   Defines documentation AND data quality tests for all dbt models.
+#   This single YAML file tells dbt:
+#     1. What each model and column MEANS (generates a data catalog)
+#     2. What tests to run (not_null, unique, accepted_values, relationships)
+#
+# HOW TESTS WORK:
+#   Running 'dbt test' compiles each test into a SQL query.
+#   For example, 'not_null' compiles to:
+#     SELECT COUNT(*) FROM model WHERE column IS NULL
+#   If the count > 0, the test FAILS.
+#
+# TEST TYPES:
+#   not_null:        Column must have no NULL values
+#   unique:          Each value in column must appear only once
+#   accepted_values: Column can only contain values in a given list
+#   relationships:   A foreign key must exist in the referenced table
+
+version: 2
+
+# ── Source Definitions ─────────────────────────────────────────────────────────
+# "Sources" are existing tables not created by dbt.
+# This is how we reference our staging schema tables in dbt models.
+
+sources:
+  - name: staging
+    description: "Cleaned and validated data in the staging schema (output of clean_data.py)"
+    schema: staging
+    tables:
+      - name: orders
+        description: "Order headers — one row per customer order"
+        columns:
+          - name: order_id
+            description: "Unique order identifier"
+            tests: [not_null, unique]
+          - name: customer_id
+            tests: [not_null]
+          - name: order_status
+            tests:
+              - accepted_values:
+                  values: ['delivered', 'shipped', 'processing', 'cancelled', 'pending']
+      
+      - name: customers
+        description: "Customer account profiles"
+        columns:
+          - name: customer_id
+            tests: [not_null, unique]
+          - name: email
+            tests: [not_null, unique]
+      
+      - name: products
+        columns:
+          - name: product_id
+            tests: [not_null, unique]
+          - name: price
+            tests:
+              - not_null
+              - dbt_utils.expression_is_true:
+                  expression: ">= 0"
+      
+      - name: order_items
+        columns:
+          - name: order_item_id
+            tests: [not_null, unique]
+          - name: order_id
+            tests:
+              - not_null
+              - relationships:
+                  to: source('staging', 'orders')
+                  field: order_id
+      
+      - name: payments
+        columns:
+          - name: payment_id
+            tests: [not_null, unique]
+          - name: payment_type
+            tests:
+              - accepted_values:
+                  values: ['credit_card', 'boleto', 'debit_card', 'voucher']
+      
+      - name: reviews
+        columns:
+          - name: review_id
+            tests: [not_null, unique]
+          - name: review_score
+            tests:
+              - accepted_values:
+                  values: [1, 2, 3, 4, 5]
+      
+      - name: categories
+        columns:
+          - name: category_id
+            tests: [not_null, unique]
+      
+      - name: sellers
+        columns:
+          - name: seller_id
+            tests: [not_null, unique]
+
+
+# ── Model Definitions ──────────────────────────────────────────────────────────
+
+models:
+  # ── Staging Models ───────────────────────────────────────────────────────────
+  - name: stg_orders
+    description: >
+      Staging model for orders. Adds computed columns like days_to_deliver,
+      was_late, and date part columns. One row per order.
+    columns:
+      - name: order_id
+        description: "Natural key — matches source order_id"
+        tests: [not_null, unique]
+      - name: customer_id
+        tests: [not_null]
+      - name: order_status
+        tests:
+          - accepted_values:
+              values: ['delivered', 'shipped', 'processing', 'cancelled', 'pending']
+      - name: is_delivered
+        tests: [not_null]
+      - name: freight_value
+        tests:
+          - not_null
+  
+  - name: stg_customers
+    description: "Staging model for customers with full_name and cohort month added."
+    columns:
+      - name: customer_id
+        tests: [not_null, unique]
+      - name: email
+        tests: [not_null, unique]
+      - name: signup_date
+        tests: [not_null]
+
+  - name: stg_products
+    description: "Staging model for products with margin calculation and price tier."
+    columns:
+      - name: product_id
+        tests: [not_null, unique]
+      - name: price
+        tests: [not_null]
+      - name: price_tier
+        tests:
+          - accepted_values:
+              values: ['Budget', 'Mid-Range', 'Premium', 'Luxury']
+
+  - name: stg_order_items
+    description: "Staging model for order line items."
+    columns:
+      - name: order_item_id
+        tests: [not_null, unique]
+      - name: total_price
+        tests: [not_null]
+
+  - name: stg_payments
+    description: "Staging model for payments."
+    columns:
+      - name: payment_id
+        tests: [not_null, unique]
+
+  - name: stg_sellers
+    description: "Staging model for sellers."
+    columns:
+      - name: seller_id
+        tests: [not_null, unique]
+
+
+  # ── Mart Models ──────────────────────────────────────────────────────────────
+  - name: dim_date
+    description: >
+      Calendar date dimension spanning 2020–2026. One row per calendar day.
+      Contains all time attributes needed for time-series analytics.
+      Use this table to filter by quarter, month, season, or week.
+    columns:
+      - name: date_day
+        description: "The calendar date (PRIMARY KEY)"
+        tests: [not_null, unique]
+      - name: date_key
+        description: "Integer key in YYYYMMDD format for fact table joins"
+        tests: [not_null, unique]
+      - name: year
+        tests: [not_null]
+      - name: quarter_number
+        tests:
+          - accepted_values:
+              values: [1, 2, 3, 4]
+      - name: is_weekend
+        tests: [not_null]
+  
+  - name: dim_customers
+    description: >
+      Customer dimension with RFM-based segmentation (Champions, Loyal, At Risk, Churned).
+      Enriched with behavioral metrics from orders: total orders, revenue, AOV.
+    columns:
+      - name: customer_id
+        tests: [not_null, unique]
+      - name: customer_segment
+        tests:
+          - accepted_values:
+              values: ['Champions', 'Loyal', 'Recent', 'At Risk', 'Churned', 'Never Ordered']
+      - name: ltv_tier
+        tests:
+          - accepted_values:
+              values: ['Platinum', 'Gold', 'Silver', 'Bronze', 'No Purchases']
+  
+  - name: dim_products
+    description: >
+      Product dimension joined with category hierarchy (category → department).
+      Includes sales performance metrics and popularity ranking.
+    columns:
+      - name: product_id
+        tests: [not_null, unique]
+  
+  - name: dim_sellers
+    description: >
+      Seller dimension with performance metrics: revenue, fulfillment rate,
+      average review score, and seller tier.
+    columns:
+      - name: seller_id
+        tests: [not_null, unique]
+      - name: seller_tier
+        tests:
+          - accepted_values:
+              values: ['Platinum', 'Gold', 'Silver', 'Bronze']
+  
+  - name: fact_orders
+    description: >
+      Central fact table at ORDER grain. One row per order.
+      Contains measures: item_count, revenue, freight, payment info, delivery performance.
+      Join to dim_customers, dim_date for dimensional analysis.
+    columns:
+      - name: order_id
+        tests: [not_null, unique]
+      - name: customer_id
+        description: "Foreign key to dim_customers"
+        tests: [not_null]
+      - name: date_key
+        description: "Foreign key to dim_date (YYYYMMDD integer)"
+        tests: [not_null]
+      - name: total_order_value
+        tests: [not_null]
+  
+  - name: fact_sales
+    description: >
+      Revenue fact table at ORDER ITEM grain. One row per line item.
+      Primary table for product revenue, margin, and seller analytics.
+      Contains: gross_revenue, estimated_cogs, gross_profit, gross_margin_pct.
+    columns:
+      - name: order_item_id
+        tests: [not_null, unique]
+      - name: order_id
+        tests: [not_null]
+      - name: product_id
+        tests: [not_null]
+      - name: gross_revenue
+        tests: [not_null]

@@ -1,0 +1,33 @@
+category_id,category_name,department
+CAT0001,Smartphones,Electronics
+CAT0002,Laptops,Electronics
+CAT0003,Headphones,Electronics
+CAT0004,Cameras,Electronics
+CAT0005,Tablets,Electronics
+CAT0006,Furniture,Home & Garden
+CAT0007,Kitchen Appliances,Home & Garden
+CAT0008,Bedding,Home & Garden
+CAT0009,Garden Tools,Home & Garden
+CAT0010,Lighting,Home & Garden
+CAT0011,Men's Clothing,Fashion
+CAT0012,Women's Clothing,Fashion
+CAT0013,Shoes,Fashion
+CAT0014,Watches,Fashion
+CAT0015,Bags,Fashion
+CAT0016,Fitness Equipment,Sports
+CAT0017,Outdoor Gear,Sports
+CAT0018,Cycling,Sports
+CAT0019,Team Sports,Sports
+CAT0020,Fiction Books,Books
+CAT0021,Non-Fiction,Books
+CAT0022,Children's Books,Books
+CAT0023,Textbooks,Books
+CAT0024,Skincare,Beauty
+CAT0025,Makeup,Beauty
+CAT0026,Hair Care,Beauty
+CAT0027,Fragrances,Beauty
+CAT0028,Action Figures,Toys
+CAT0029,Board Games,Toys
+CAT0030,Baby Toys,Toys
+CAT0031,Car Accessories,Automotive
+CAT0032,Motor Oil,Automotive

@@ -1,0 +1,53 @@
+# profiles.yml
+# =============
+# PURPOSE:
+#   Defines database connection profiles for dbt.
+#   Each profile has environments (dev, prod) with different
+#   connection settings.
+#
+# WHERE THIS FILE GOES:
+#   Option A (standard): ~/.dbt/profiles.yml  (user's home directory)
+#   Option B (this project): ./dbt/profiles.yml (alongside dbt_project.yml)
+#   When using Option B, run dbt with: --profiles-dir ./dbt
+#
+# SECURITY NOTE:
+#   In production, use environment variables for passwords:
+#     password: "{{ env_var('DBT_PASSWORD') }}"
+#   Never commit real passwords to Git!
+#
+# HOW TO SWITCH ENVIRONMENTS:
+#   dbt run --target dev   (uses localhost)
+#   dbt run --target prod  (uses Docker/production host)
+
+ecommerce_analytics:
+  target: dev    # Default environment when you just run 'dbt run'
+  
+  outputs:
+    
+    # ── Development Environment ──────────────────────────────
+    # Used when developing models locally
+    dev:
+      type: postgres
+      host: localhost              # Direct PostgreSQL connection
+      port: 5432
+      user: ecommerce_user
+      password: ecommerce_pass    # Replace with env var in production
+      dbname: ecommerce_dw
+      schema: marts               # dbt will write to this schema
+      threads: 4                  # Run up to 4 models in parallel
+      keepalives_idle: 0
+      connect_timeout: 10
+      
+    # ── Production Environment ────────────────────────────────
+    # Used by Airflow DAG (running inside Docker network)
+    prod:
+      type: postgres
+      host: postgres              # Docker service name (internal DNS)
+      port: 5432
+      user: ecommerce_user
+      password: "{{ env_var('DBT_PASSWORD', 'ecommerce_pass') }}"
+      dbname: ecommerce_dw
+      schema: marts
+      threads: 4
+      keepalives_idle: 0
+      connect_timeout: 10

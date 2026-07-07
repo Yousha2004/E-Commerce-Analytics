@@ -1,0 +1,99 @@
+# dbt_project.yml
+# ================
+# PURPOSE:
+#   This is the main configuration file for the dbt project.
+#   Every dbt project must have this file in its root directory.
+#
+# WHAT DOES dbt DO?
+#   dbt (data build tool) lets you write SQL SELECT statements
+#   and it automatically creates tables/views in your database.
+#   It handles:
+#     - Running models in the right order (dependency resolution)
+#     - Incremental loading (only process new/changed data)
+#     - Data testing (not_null, unique, referential integrity)
+#     - Documentation generation (HTML data catalog)
+#
+# KEY CONCEPTS:
+#   model:     A SQL file that becomes a table or view in the database
+#   source:    A reference to an existing table (our staging schema)
+#   test:      A data quality assertion (runs as SQL COUNT queries)
+#   snapshot:  Slowly Changing Dimension tracking (SCD Type 2)
+
+name: 'ecommerce_analytics'
+version: '1.0.0'
+config-version: 2
+
+# The profile to use when running dbt
+# Matches the profile name in profiles.yml
+profile: 'ecommerce_analytics'
+
+# ── File Paths ────────────────────────────────────────────────────────────────
+# Tell dbt where to find different types of files
+
+model-paths: ["models"]          # SQL model files live here
+analysis-paths: ["analyses"]     # Ad-hoc analysis queries
+test-paths: ["tests"]            # Custom singular test files
+seed-paths: ["seeds"]            # CSV files to load as static tables
+macro-paths: ["macros"]          # Reusable Jinja2 SQL functions
+snapshot-paths: ["snapshots"]    # SCD snapshot definitions
+
+# Where dbt puts compiled SQL and run artifacts
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# ── Model Configurations ───────────────────────────────────────────────────────
+# Configure defaults for each folder of models.
+# These can be overridden in individual model files with {{ config(...) }}
+
+models:
+  ecommerce_analytics:
+    
+    # ── Staging Models ──────────────────────────────────────────────────────
+    # Staging = light cleaning of source data, one-to-one with source tables
+    # Materialized as VIEWS (no data stored, just a query definition)
+    # This is cheap — staging models are read-through views over our staging schema
+    staging:
+      +materialized: view          # CREATE VIEW (no storage cost)
+      +schema: staging_dbt         # Write to staging_dbt schema
+      +tags: ["staging"]
+    
+    # ── Intermediate Models ─────────────────────────────────────────────────
+    # Business logic joins and transformations between staging and marts
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+      +tags: ["intermediate"]
+    
+    # ── Mart Models ─────────────────────────────────────────────────────────
+    # Final analytical models — facts and dimensions
+    # Materialized as TABLES (data is stored, queries are fast)
+    marts:
+      +materialized: table         # CREATE TABLE (fast reads for BI tools)
+      +schema: marts               # Write to marts schema
+      +tags: ["marts"]
+      
+      # Fact tables use incremental loading for efficiency
+      # (only process new orders each run, not the entire history)
+      fact_orders:
+        +materialized: incremental
+        +unique_key: order_id
+      
+      fact_sales:
+        +materialized: incremental
+        +unique_key: order_item_id
+
+# ── Seed Configurations ────────────────────────────────────────────────────────
+seeds:
+  ecommerce_analytics:
+    +schema: seeds
+
+# ── Test Configurations ────────────────────────────────────────────────────────
+tests:
+  ecommerce_analytics:
+    +severity: warn    # Warn instead of error on test failures (use 'error' in production)
+
+# ── Documentation ─────────────────────────────────────────────────────────────
+# dbt docs generate → creates docs/index.html
+# dbt docs serve    → starts web server on port 8080
